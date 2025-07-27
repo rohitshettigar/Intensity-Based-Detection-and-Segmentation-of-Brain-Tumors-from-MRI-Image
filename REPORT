@@ -1,0 +1,91 @@
+%%LoadandDisplayOriginalMRIImage
+ imagePath=’img3.jpg’;%Path totheMRIimage
+ mriImage= imread(imagePath);
+ %ConverttograyscaleiftheimageisinRGBformat
+ ifsize(mriImage,3)==3
+ mriImage=rgb2gray(mriImage);
+ end
+ %DisplaytheoriginalMRIimage
+ figure;
+ imshow(mriImage,[]);
+ title(’OriginalMRIImage’);
+ %%Preprocessing-ContrastEnhancement
+ enhancedImage=adapthisteq(mriImage,’ClipLimit’,0.02,’Distribution’,’
+ rayleigh’);
+ %Displaytheenhancedimage
+ figure;
+ imshow(enhancedImage,[]);
+ title(’ContrastEnhancedImage’);
+ %Performadaptivethresholdingtosegmentpotentialtumorregions
+ binaryImage=imbinarize(enhancedImage,’adaptive’,’Sensitivity’, 0.4);
+ %Displaythebinaryimage
+ figure;
+ imshow(binaryImage,[]);
+ title(’BinaryImage(AdaptiveThresholding)’);
+ %%MorphologicalOperations
+ %Removenoiseandsmallobjects
+ se=strel(’disk’,5);%Structuringelement
+ cleanedImage=imopen(binaryImage,se);
+ %Displaythecleanedimage
+ figure;
+ imshow(cleanedImage,[]);
+ title(’MorphologicallyCleaned Image’);
+ %%EdgeDetectionforTumorBoundaries
+ %UsetheCannymethodforedgedetection
+ edges=edge(cleanedImage,’Canny’);
+ %Displaytheedge-detectedimage
+ figure;
+ imshow(edges,[]);
+ title(’EdgeDetectionofTumor Boundaries’);
+ %% Block-BasedFeatureExtraction
+ blockSize=8;%Blocksizeforfeatureextraction
+ [rows,cols]=size(mriImage);
+ numBlocksRow=floor(rows/blockSize);
+numBlocksCol=floor(cols/blockSize);
+ features= [];%Featurematrixforstoringblockintensities
+ labels=[]; %Labels(1=tumor,0=non-tumor)
+ fori=1:numBlocksRow
+ forj=1:numBlocksCol
+ %Defineblockboundaries
+ rowStart=(i-1)*blockSize+1;
+ rowEnd=i*blockSize;
+ colStart=(j-1)*blockSize+1;
+ colEnd=j*blockSize;
+ %Extracttheblockandcomputeitsaverageintensity
+ block=mriImage(rowStart:rowEnd,colStart:colEnd);
+ meanIntensity=mean(block(:));
+ %Labelblocksinbottom-rightquadrantastumor(fortesting)
+ if i>numBlocksRow/ 2&&j>numBlocksCol/2
+ labels=[labels;1];%Tumor
+ else
+ labels=[labels;0];%Non-tumor
+ end
+ %Appendfeaturetothefeaturematrix
+ features=[features; meanIntensity];
+ end
+ end
+ %%ClassificationwithaSimpleDecisionStump
+ threshold=100;%Intensitythresholdforclassification
+ predictions=features>threshold;%Tumor(1)ornon-tumor(0)
+ %Calculateaccuracy
+ accuracy= sum(predictions==labels)/length(labels) * 100;
+ fprintf(’DecisionTreeStumpAccuracy:%.2f%%\n’,accuracy);
+ %%VisualizationofDetectedTumorRegions
+ detectedImage=mriImage;%Copyoftheoriginalimageforoverlay
+ figure;
+ imshow(detectedImage,[]);
+ title(’DetectedTumorRegions’);
+ holdon;
+ %Overlayboundingboxesonpredictedtumorblocks
+ fori=1:numBlocksRow
+ forj=1:numBlocksCol
+ blockIndex=(i-1)*numBlocksCol+j;
+ if predictions(blockIndex)==1
+ %Drawrectanglefortumorblock
+ rectangle(’Position’,[(j-1)*blockSize,(i-1)*blockSize,
+ blockSize,blockSize],...
+ ’EdgeColor’,’r’,’LineWidth’,2);
+ end
+ end
+ end
+ holdoff;
